@@ -48,8 +48,9 @@ def run_my_jar(src_path: str):
     my_jar.stdin.write(bytes(src_path + "\n", encoding="utf-8"))
     my_jar.stdin.flush()
     ret = my_jar.stdout.readline().decode("utf-8")
-    if ret.split()[0] != "Done":
-        print("Error when running my jar!")
+    response = ret.split()
+    if len(response) < 1 or response[0] != "Done":
+        print("Error when running my jar on " + src_path)
         exit(1)
 
 

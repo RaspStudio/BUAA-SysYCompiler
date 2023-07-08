@@ -34,8 +34,29 @@ public class MipsReg implements VReg {
         this.def = def;
     }
 
+    public MipsInst getDef() {
+        return def;
+    }
+
+    public void delUser(MipsInst user) {
+        if (!users.remove(user)) {
+            throw new RuntimeException("delUser: " + user + " not found");
+        }
+    }
+
+    public void delDef(MipsInst user) {
+        if (def == null || def != user) {
+            throw new RuntimeException("delDef: def is null");
+        }
+        def = null;
+    }
+
     public void addUser(MipsInst user) {
         users.add(user);
+    }
+
+    public List<MipsInst> getUsers() {
+        return users;
     }
 
     @Override

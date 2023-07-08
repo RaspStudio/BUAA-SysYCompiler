@@ -2,27 +2,26 @@ package backend.value.inst.special;
 
 import backend.value.MipsBlock;
 import backend.value.inst.MipsInst;
-import backend.value.meta.MipsLabel;
+import backend.value.meta.MipsImm;
 import backend.value.meta.MipsReg;
 
 import java.util.Collections;
 import java.util.List;
 
-public class MipsJump extends MipsInst {
-    private final MipsLabel label;
+public class MipsLoadImm extends MipsInst {
+    private final MipsReg dest;
+    private final MipsImm imm;
 
-    public MipsJump(MipsBlock parent, MipsLabel label) {
+    public MipsLoadImm(MipsBlock parent, MipsReg dest, MipsImm imm) {
         super(parent);
-        this.label = label;
-    }
-
-    public MipsLabel getLabel() {
-        return label;
+        this.dest = dest;
+        this.imm = imm;
+        dest.setDef(this);
     }
 
     @Override
     public List<MipsReg> getDefs() {
-        return Collections.emptyList();
+        return Collections.singletonList(dest);
     }
 
     @Override
@@ -37,7 +36,6 @@ public class MipsJump extends MipsInst {
 
     @Override
     public String toString() {
-        return "j   \t\t" + label.label();
+        return "li\t\t" + dest + ", " + imm;
     }
-
 }

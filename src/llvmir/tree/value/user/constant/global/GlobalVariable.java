@@ -22,6 +22,10 @@ public class GlobalVariable extends GlobalObject {
         this.isConst = true;
     }
 
+    public boolean isConst() {
+        return isConst;
+    }
+
     public Type getDataType() {
         return ((PointerType)(valType)).getDerivedType();
     }

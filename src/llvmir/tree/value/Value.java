@@ -17,7 +17,7 @@ import java.util.Set;
 public abstract class Value implements Comparable<Value> {
     protected final int id;
     protected final Type valType;
-    protected final List<User> users;
+    protected final Set<User> users;
     protected final String name;
 
     private static int usedId = -1;
@@ -26,7 +26,7 @@ public abstract class Value implements Comparable<Value> {
     protected Value(Type valType, String name) {
         this.id = ++usedId;
         this.valType = valType;
-        this.users = new ArrayList<>();
+        this.users = new HashSet<>();
         if (this instanceof Constant || this.valType instanceof VoidType) {
             this.name = name;
         } else {
@@ -78,7 +78,7 @@ public abstract class Value implements Comparable<Value> {
     }
 
     public List<User> getUsers() {
-        return users;
+        return new ArrayList<>(users);
     }
 
     protected void delUser(Instruction value) {

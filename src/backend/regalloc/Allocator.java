@@ -114,6 +114,48 @@ public class Allocator extends RegAllocator<MipsInst, MipsReg, MipsBlock, MipsFu
 
     @Override
     protected void spill(MipsFunction function, MipsReg toSpill) {
+        if (toSpill.getUsers().stream().allMatch(o -> o.getParent() == toSpill.getUsers().get(0).getParent())) {
+            // 如果所有用户都在同一个基本块中，采取最坏情况的溢出策略
+            worstSpill(function, toSpill);
+        } else {
+            // 如果用户不在同一个基本块中（跨基本块变量），尝试缩短其生存期为单基本块
+            goodSpill(function, toSpill);
+        }
+    }
+
+    private void goodSpill(MipsFunction function, MipsReg toSpill) {
+        // 为溢出的寄存器分配一个栈空间
+        MipsAddr spillTo = function.stack().allocData(4);
+        int counter = 0;
+        for (MipsBlock block : function.getBlocks()) {
+            ListIterator<MipsInst> insts = block.getInsts().listIterator();
+            // 维护基本块内该变量的当前寄存器，如果当前寄存器为null，说明该变量还未被加载到寄存器中
+            MipsReg curValue = null;
+            while (insts.hasNext()) {
+                MipsInst inst = insts.next();
+                if (inst.getDefs().contains(toSpill)) {
+                    // 如果当前指令定义了需要溢出的寄存器，需要将该指令存下来
+                    insts.add(new MipsSaveWord(block, toSpill, spillTo));
+                    // 当前基本块其它 User 不需要更换寄存器
+                    break;
+                }
+                if (inst.getUses().contains(toSpill)) {
+                    // 如果当前指令使用了需要溢出的寄存器，需要将该指令读出来或使用缓存
+                    if (curValue == null) {
+                        // 当前基本块内第一次使用且没被定义过，需要将该指令读出来
+                        curValue = new MipsReg(toSpill.name() + "_" + (counter++));
+                        insts.previous();
+                        insts.add(new MipsLoadWord(block, curValue, spillTo));
+                        insts.next();
+                    }
+                    // 现在curValue一定不为空，将该指令的使用替换为curValue
+                    inst.replaceUse(toSpill, curValue);
+                }
+            }
+        }
+    }
+
+    private void worstSpill(MipsFunction function, MipsReg toSpill) {
         // 为溢出的寄存器分配一个栈空间
         MipsAddr spillTo = function.stack().allocData(4);
         int counter = 0;
@@ -128,10 +170,10 @@ public class Allocator extends RegAllocator<MipsInst, MipsReg, MipsBlock, MipsFu
                 if (inst.getUses().contains(toSpill)) {
                     // 如果当前指令使用了需要溢出的寄存器，需要将该指令读出来
                     MipsReg load = new MipsReg(toSpill.name() + "_" + (counter++));
-                    inst.replaceUse(toSpill, load);
                     insts.previous();
                     insts.add(new MipsLoadWord(block, load, spillTo));
                     insts.next();
+                    inst.replaceUse(toSpill, load);
                 }
             }
         }

@@ -1,17 +1,11 @@
 package backend.value.inst.rtype;
 
 import backend.value.MipsBlock;
-import backend.value.inst.MipsCmpType;
 import backend.value.inst.MipsInst;
 import backend.value.meta.MipsImm;
 import backend.value.meta.MipsReg;
 import llvmir.tree.value.user.instruction.Instruction;
-import llvmir.tree.value.user.instruction.binary.AddInst;
-import llvmir.tree.value.user.instruction.binary.ICmpInst;
-import llvmir.tree.value.user.instruction.binary.MulInst;
-import llvmir.tree.value.user.instruction.binary.SDivInst;
-import llvmir.tree.value.user.instruction.binary.SRemInst;
-import llvmir.tree.value.user.instruction.binary.SubInst;
+import llvmir.tree.value.user.instruction.binary.*;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -59,6 +53,10 @@ public abstract class MipsRInst extends MipsInst {
         return isImmType ? Collections.singletonList(lop) : Arrays.asList(lop, rop);
     }
 
+    public MipsImm getRimm() {
+        return rimm;
+    }
+
     @Override
     public void replaceUse(MipsReg old, MipsReg newValue) {
         if (dest == old) {
@@ -73,7 +71,7 @@ public abstract class MipsRInst extends MipsInst {
     }
 
     @Override
-    public final String toString() {
+    public String toString() {
         return (getOpcode() + "    ").substring(0, 4) + "\t\t" + dest + ", " + lop + ", " + (isImmType ? rimm : rop);
     }
 
@@ -109,8 +107,8 @@ public abstract class MipsRInst extends MipsInst {
                     new MipsRem(parent, dest, lop, reg);
         } else if (inst instanceof ICmpInst) {
             return reg == null ?
-                    new MipsCmp(parent, dest, lop, imm, MipsCmpType.of(((ICmpInst) inst).getCmpType())) :
-                    new MipsCmp(parent, dest, lop, reg, MipsCmpType.of(((ICmpInst) inst).getCmpType()));
+                    new MipsCmp(parent, dest, lop, imm, (ICmpInst) inst) :
+                    new MipsCmp(parent, dest, lop, reg, (ICmpInst) inst);
         } else {
             throw new RuntimeException("Unknown binary operator");
         }

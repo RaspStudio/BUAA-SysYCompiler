@@ -6,6 +6,7 @@ import backend.value.inst.MipsInst;
 import backend.value.inst.MipsInstFactory;
 import backend.value.inst.atype.MipsSaveWord;
 import backend.value.inst.rtype.MipsAdd;
+import backend.value.inst.rtype.MipsCmp;
 import backend.value.inst.special.MipsComment;
 import backend.value.meta.MipsImm;
 import backend.value.meta.MipsLabel;
@@ -31,6 +32,29 @@ public class MipsBlock extends MipsLabel implements VBlock<MipsInst, MipsReg, Mi
     @Override
     public List<MipsInst> getInsts() {
         return instructions;
+    }
+
+    public void removeInst(MipsCmp cmp) {
+        if (!instructions.remove(cmp)) {
+            throw new RuntimeException("removeInst: " + cmp + " not found");
+        }
+        cmp.getDefs().forEach(o -> o.delDef(cmp));
+        cmp.getUses().forEach(o -> o.delUser(cmp));
+    }
+
+    public List<MipsInst> getRealInsts() {
+        List<MipsInst> realInsts = new ArrayList<>();
+        instructions.forEach(o -> {
+            if (!(o instanceof MipsComment)) {
+                realInsts.add(o);
+            }
+        });
+        return realInsts;
+    }
+
+    public MipsInst getLastInst() {
+        List<MipsInst> realInsts = getRealInsts();
+        return realInsts.size() > 0 ? realInsts.get(realInsts.size() - 1) : null;
     }
 
     @Override
@@ -82,4 +106,5 @@ public class MipsBlock extends MipsLabel implements VBlock<MipsInst, MipsReg, Mi
 
         return mipsBlock;
     }
+
 }

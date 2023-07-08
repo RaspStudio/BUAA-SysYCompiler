@@ -8,11 +8,9 @@ import llvmir.tree.type.Types;
 import llvmir.tree.value.Argument;
 import llvmir.tree.value.BasicBlock;
 import llvmir.tree.value.Value;
+import llvmir.tree.value.user.instruction.Instruction;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.StringJoiner;
+import java.util.*;
 
 public class Function extends GlobalObject implements SymbolTabler {
     private final boolean isBuiltIn;
@@ -81,6 +79,40 @@ public class Function extends GlobalObject implements SymbolTabler {
 
     public List<BasicBlock> getBlocks() {
         return new ArrayList<>(blocks);
+    }
+
+    public void trimBlocks() {
+        boolean changed = true;
+        while (changed) {
+            changed = false;
+            ListIterator<BasicBlock> iter = blocks.listIterator();
+            while (iter.hasNext()) {
+                BasicBlock block = iter.next();
+                if (block.getFroms().isEmpty() && !block.isEntry()) {
+                    disableBlock(block);
+                    iter.remove();
+                    changed = true;
+                }
+            }
+        }
+    }
+
+    private void disableBlock(BasicBlock block) {
+        if (!blocks.contains(block) || block.isEntry()) {
+            throw new RuntimeException("Cannot Remove");
+        }
+        // 移除方程中所有指令
+        for (Instruction inst : block.getAllInstructions()) {
+            block.removeInst(inst);
+        }
+        // 移除该块后继块的引用
+        for (BasicBlock to : block.getTos()) {
+            to.removeFrom(block);
+        }
+        // 移除该块前驱块的引用
+        if (block.getFroms().size() != 0) {
+            throw new RuntimeException("Who Called Remove?");
+        }
     }
 
     public void setReturnValue(Value returnValue) {

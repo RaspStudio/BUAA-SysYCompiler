@@ -1,9 +1,9 @@
 package llvmir;
 
 import llvmir.pass.Pass;
-import llvmir.pass.constspread.ConstSpread;
-import llvmir.pass.dag.SelectionDAG;
 import llvmir.pass.deadcode.DeleteDead;
+import llvmir.pass.gvn.GlobalCodeMove;
+import llvmir.pass.gvn.GlobalValueNumbering;
 import llvmir.pass.mem2reg.MemToReg;
 import llvmir.pass.mem2reg.RemovePhi;
 import llvmir.tree.Module;
@@ -15,9 +15,9 @@ public class Optimizer {
     private final Module module;
     private boolean optimized = false;
     private final List<Pass> passes = Arrays.asList(
-            new ConstSpread(),
-            new SelectionDAG(),
-            new DeleteDead()
+            new GlobalValueNumbering(),
+            new DeleteDead(),
+            new GlobalCodeMove()
     );
 
     public Optimizer(Module module) {

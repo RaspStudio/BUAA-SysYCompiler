@@ -18,8 +18,8 @@ public class Compiler {
     public static void main(String[] args) throws IOException {
         //dumpIROpt();
         //debugMips();
-        debugMipsOpt();
-        //mipsOpt();
+        //debugMipsOpt();
+        mipsOpt();
     }
 
     /*---------- 功能接口 ----------*/
@@ -54,7 +54,7 @@ public class Compiler {
     public static void mipsOpt() throws IOException {
         FrontEnd frontEnd = new FrontEnd(IOTools.readAll(INPUT_PATH));
         Optimizer optimizer = new Optimizer(frontEnd.buildIR());
-        BackEnd backEnd = BackEnd.build(optimizer.optimized()).allocReg();
+        BackEnd backEnd = BackEnd.build(optimizer.optimized()).allocReg().peepHole();
         writeAndClose(MIPS_PATH, backEnd.toString());
     }
 
@@ -78,7 +78,7 @@ public class Compiler {
         BackEnd original = BackEnd.build(optimizer.original()).allocReg();
         writeAndClose("_" + MIPS_PATH, original.toString());
         writeAndClose(LLVMIR_PATH, optimizer.optimized().toString());
-        BackEnd backEnd = BackEnd.build(optimizer.optimized()).allocReg();
+        BackEnd backEnd = BackEnd.build(optimizer.optimized()).allocReg().peepHole();
         writeAndClose(MIPS_PATH, backEnd.toString());
     }
 

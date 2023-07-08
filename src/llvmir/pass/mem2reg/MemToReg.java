@@ -1,73 +1,21 @@
 package llvmir.pass.mem2reg;
 
+import llvmir.pass.Analyzer;
 import llvmir.pass.Pass;
 import llvmir.tree.Module;
 import llvmir.tree.value.BasicBlock;
 import llvmir.tree.value.Value;
 import llvmir.tree.value.user.constant.data.ConstantInt;
 import llvmir.tree.value.user.constant.global.Function;
-import llvmir.tree.value.user.instruction.AllocaInst;
-import llvmir.tree.value.user.instruction.Instruction;
-import llvmir.tree.value.user.instruction.LoadInst;
-import llvmir.tree.value.user.instruction.StoreInst;
+import llvmir.tree.value.user.instruction.*;
 
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 public class MemToReg extends Pass {
     /**
-     * 基本块的严格支配关系树，键为基本块，值为基本块所严格支配的所有节点
+     * 活跃变量、支配关系分析器
      */
-    private final Map<BasicBlock, List<BasicBlock>> domTree = new HashMap<>();
-
-    /**
-     * 深度优先搜索，用于构建基本块的支配关系树，当基本块 A 不能不经过 B 而搜索到时，B 严格支配 A。
-     * @param cur 当前搜索的基本块
-     * @param stop 搜索不经过的基本块
-     * @param canReach 已经搜索过的基本块（可以不经过 stop 基本块访问到）
-     */
-    private void domTreeDFS(BasicBlock cur, BasicBlock stop, Set<BasicBlock> canReach) {
-        // 如果当前基本块不是第一次访问到，一定搜索过其底层，直接返回
-        if (canReach.contains(cur)) {
-            return;
-        }
-        // 如果当前基本块第一次访问到，添加到 canReach 中
-        canReach.add(cur);
-        // 如果当前基本块不是 stop 基本块，对其底层进行搜索
-        if (cur != stop) {
-            for (BasicBlock succ : cur.getTos()) {
-                domTreeDFS(succ, stop, canReach);
-            }
-        }
-    }
-
-    /**
-     * 构建函数内所有基本块的严格支配关系树
-     * @param func 函数
-     */
-    private void createDomTree(Function func) {
-        // 使用深度优先遍历创建dom树
-        BasicBlock entrance = func.getBlocks().get(0);
-        // 对于每个基本块，找到其严格支配的所有基本块
-        for (BasicBlock dominator : func.getBlocks()) {
-            // 计算可以不经过 dominator 基本块访问到的基本块
-            Set<BasicBlock> canReach = new HashSet<>();
-            domTreeDFS(entrance, dominator, canReach);
-            // 其余必须经过 dominator 基本块访问到的基本块即为 dominator 严格支配的基本块
-            List<BasicBlock> dominated = new ArrayList<>();
-            for (BasicBlock block : func.getBlocks()) {
-                if (!canReach.contains(block)) {
-                    dominated.add(block);
-                }
-            }
-            domTree.put(dominator, dominated);
-        }
-    }
+    private Analyzer analyzer;
 
     /**
      * 检查是否所有 Load 指令的块都被 Store 指令非严格支配
@@ -77,7 +25,7 @@ public class MemToReg extends Pass {
      */
     private boolean allLoadDominatedBy(StoreInst storeInst, List<LoadInst> loads) {
         BasicBlock storeBlock = storeInst.getParent();
-        List<BasicBlock> strictDominated = domTree.get(storeBlock);
+        Set<BasicBlock> strictDominated = analyzer.dominateTree().get(storeBlock);
         for (LoadInst load : loads) {
             BasicBlock loadBlock = load.getParent();
             // 当 store 直接支配或同块中 load 靠后时为合理
@@ -88,6 +36,49 @@ public class MemToReg extends Pass {
         }
         return true;
     }
+
+    private Value get(Stack<Value> stack) {
+        return stack.isEmpty() ? ConstantInt.ZERO : stack.peek();
+    }
+
+    /**
+     * 消除相关的 Load 和 Store
+     */
+    private void renameDFS(Stack<Value> valueOfVar, BasicBlock cur,
+                           Set<LoadInst> loads, Set<StoreInst> stores, Map<BasicBlock, PhiInst> phiInstMap) {
+        Stack<Value> curBlockValueOfVar = new Stack<>();
+        for (Value value : valueOfVar) {
+            curBlockValueOfVar.push(value);
+        }
+
+        // 为当前基本块的每个指令分配新的虚拟寄存器
+        for (Instruction inst : cur.getAllInstructions()) {
+            if (inst instanceof LoadInst && loads.contains(inst)) {
+                // 如果是 Load 指令，则将其替换为虚拟寄存器
+                inst.replaceSelfWith(get(curBlockValueOfVar));
+                inst.getParent().removeInst(inst);
+            } else if (inst instanceof StoreInst && stores.contains(inst)) {
+                // 如果是 Store 指令，则将其替换为虚拟寄存器
+                curBlockValueOfVar.push(inst.getOperand(0));
+                inst.getParent().removeInst(inst);
+            } else if (inst == phiInstMap.get(cur)) {
+                curBlockValueOfVar.push(inst);
+            }
+        }
+
+        // 为后继基本块的 phi 指令添加来源
+        for (BasicBlock succ : cur.getTos()) {
+            if (phiInstMap.containsKey(succ)) {
+                phiInstMap.get(succ).addIncoming(get(curBlockValueOfVar), cur);
+            }
+        }
+
+        // 递归处理后继基本块
+        for (BasicBlock succ : analyzer.iDominateTree().get(cur)) {
+            renameDFS(curBlockValueOfVar, succ, loads, stores, phiInstMap);
+        }
+    }
+
 
     /**
      * 将给定的 Alloca 指令涉及的变量转化为 Phi 指令
@@ -149,7 +140,42 @@ public class MemToReg extends Pass {
             setChanged();
         } else {
             // 一般情况，非只读变量，分配的内存被写入多次，需要构造 Phi 节点
-            return;// todo 不能优化的情况还没写，暂时先只尝试做优化
+            HashSet<BasicBlock> defBlocks = new HashSet<>();
+            stores.forEach(o -> defBlocks.add(o.getParent()));
+            // 以下两个集合对应算法中的 F 和 W 集合
+            HashSet<BasicBlock> phiInserted = new HashSet<>();
+            HashSet<BasicBlock> containDefs = new HashSet<>(defBlocks);
+
+            while (!containDefs.isEmpty()) {
+                BasicBlock block = containDefs.iterator().next();
+                containDefs.remove(block);
+                for (BasicBlock frontier : analyzer.domFrontier().get(block)) {
+                    if (!phiInserted.contains(frontier)) {
+                        phiInserted.add(frontier);
+                        if (!defBlocks.contains(frontier)) {
+                            containDefs.add(frontier);
+                        }
+                    }
+                }
+            }
+
+            // 为每个需要插入 Phi 指令的基本块构造 Phi 指令
+            Map<BasicBlock, PhiInst> phiMap = new HashMap<>();
+            for (BasicBlock block : phiInserted) {
+                // 剪枝：如果该基本块中没有用到为该变量分配的内存，那么不需要插入 Phi 指令
+                if (analyzer.liveIn().get(block).contains(inst)) {
+                    // 插入 Phi 指令
+                    PhiInst phi = new PhiInst(inst.getElementType(), inst.getName() + "_" + block.getPureName(), block);
+                    phiMap.put(block, phi);
+                    block.insertHead(phi);
+                }
+            }
+
+            // 进行 Phi 指令重命名
+            Stack<Value> valueStack = new Stack<>();
+            renameDFS(valueStack, inst.getParent(),
+                    Collections.unmodifiableSet(new HashSet<>(loads)),
+                    Collections.unmodifiableSet(new HashSet<>(stores)), phiMap);
         }
 
         // 该变量处理完毕，消去 Alloca 语句
@@ -176,7 +202,7 @@ public class MemToReg extends Pass {
      * @param function 函数
      */
     private void passFunction(Function function) {
-        createDomTree(function);
+        analyzer = new Analyzer(function);
         getPromotable(function).forEach(this::allocaToPhi);
     }
 
@@ -184,4 +210,5 @@ public class MemToReg extends Pass {
     public void pass(Module module) {
         module.getFunctions().forEach(this::passFunction);
     }
+
 }

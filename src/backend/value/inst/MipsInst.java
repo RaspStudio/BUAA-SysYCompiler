@@ -18,4 +18,7 @@ public abstract class MipsInst implements VInst<MipsReg> {
     @Override
     public abstract String toString();
 
+    public MipsBlock getParent() {
+        return parent;
+    }
 }

@@ -7,13 +7,10 @@ import llvmir.tree.type.Types;
 import llvmir.tree.value.user.constant.global.Function;
 import llvmir.tree.value.user.instruction.Instruction;
 import llvmir.tree.value.user.instruction.NormalInstruction;
+import llvmir.tree.value.user.instruction.StoreInst;
 import llvmir.tree.value.user.instruction.terminator.TerminateInstruction;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.StringJoiner;
+import java.util.*;
 
 public class BasicBlock extends Value implements Derivative<Function>, SymbolTabler {
     private final Function parent;
@@ -22,6 +19,7 @@ public class BasicBlock extends Value implements Derivative<Function>, SymbolTab
     private final List<BasicBlock> froms;
     private final List<BasicBlock> tos;
     private boolean isEntry = false;
+    private int depth = 0;
 
     public BasicBlock(String name, Function parent) {
         super(Types.label(), "%" + name);
@@ -70,7 +68,30 @@ public class BasicBlock extends Value implements Derivative<Function>, SymbolTab
         tos.addAll(Arrays.asList(block));
     }
 
+
+    public void registerLoop(BasicBlock exit, BasicBlock loopBody) {
+        this.depth++;
+        loopBody.travelLoop(exit, this, new HashSet<>());
+    }
+
+    private void travelLoop(BasicBlock exit, BasicBlock cond, Set<BasicBlock> visited) {
+        if (this == exit || this == cond) {
+            return;
+        }
+        if (visited.contains(this)) {
+            return;
+        }
+        visited.add(this);
+        this.depth++;
+        for (BasicBlock to : tos) {
+            to.travelLoop(exit, cond, visited);
+        }
+    }
+
     /*---------- 后端 ----------*/
+    public int loopDepth() {
+        return depth;
+    }
 
     public List<Instruction> getInstructions() {
         return instructions;
@@ -87,11 +108,11 @@ public class BasicBlock extends Value implements Derivative<Function>, SymbolTab
     }
 
     public List<BasicBlock> getFroms() {
-        return froms;
+        return new ArrayList<>(froms);
     }
 
     public List<BasicBlock> getTos() {
-        return tos;
+        return new ArrayList<>(tos);
     }
 
     public boolean isEntry() {
@@ -109,10 +130,51 @@ public class BasicBlock extends Value implements Derivative<Function>, SymbolTab
     }
 
     public void removeInst(Instruction value) {
-        if (!instructions.remove(value)) {
+        if (!instructions.remove(value) && terminator != value) {
             throw new RuntimeException("Cannot Remove Instruction");
         }
-        value.getOperands().forEach(o -> o.delUser(value));
+        new HashSet<>(value.getOperands()).forEach(o -> o.delUser(value));
+    }
+
+    public void moveInst(Instruction inst, Instruction before) {
+        if (!instructions.remove(inst) || !(inst instanceof NormalInstruction)) {
+            throw new RuntimeException("Cannot Remove Instruction");
+        }
+        before.getParent().insertBefore(before, inst);
+        inst.setParent(before.getParent());
+    }
+
+    public void removeFrom(BasicBlock block) {
+        if (!froms.remove(block)) {
+            throw new RuntimeException("Cannot Remove From");
+        }
+    }
+
+    public void insertHead(Instruction phi) {
+        instructions.add(0, phi);
+    }
+
+    public void insertBefore(Instruction before, Instruction inst) {
+        int index = instructions.indexOf(before);
+        if (index >= 0) {
+            instructions.add(index, inst);
+        } else if (terminator == before) {
+            instructions.add(inst);
+        } else {
+            throw new RuntimeException("Cannot Find Instruction");
+        }
+    }
+
+    public void insertAfter(Instruction target, Instruction newInst) {
+        int index = instructions.indexOf(target);
+        if (index == -1) {
+            throw new RuntimeException("Cannot Find Target Instruction");
+        }
+        instructions.add(index + 1, newInst);
+    }
+
+    public void insertTail(StoreInst storeInst) {
+        instructions.add(storeInst);
     }
 
     public int indexOf(Instruction instruction) {

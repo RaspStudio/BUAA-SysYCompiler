@@ -1,4 +1,4 @@
-package llvmir.pass.dag;
+package llvmir.pass.deprecated.dag;
 
 import llvmir.pass.Pass;
 import llvmir.tree.Module;

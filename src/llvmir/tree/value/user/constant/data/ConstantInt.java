@@ -5,6 +5,7 @@ import llvmir.tree.type.Types;
 import java.util.Objects;
 
 public class ConstantInt extends ConstantData {
+
     private final int val;
 
     public ConstantInt(int val) {
@@ -32,5 +33,5 @@ public class ConstantInt extends ConstantData {
     }
 
     public static final ConstantInt ZERO = new ConstantInt(0);
-
+    public static final ConstantInt UNDEFINED = new ConstantInt(0);
 }

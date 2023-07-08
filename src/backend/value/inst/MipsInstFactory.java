@@ -6,14 +6,10 @@ import backend.value.inst.atype.MipsLoadAddr;
 import backend.value.inst.atype.MipsLoadWord;
 import backend.value.inst.atype.MipsSaveWord;
 import backend.value.inst.rtype.MipsAdd;
+import backend.value.inst.rtype.MipsCmp;
 import backend.value.inst.rtype.MipsMul;
 import backend.value.inst.rtype.MipsRInst;
-import backend.value.inst.special.MipsBranch;
-import backend.value.inst.special.MipsFuncCall;
-import backend.value.inst.special.MipsJr;
-import backend.value.inst.special.MipsJump;
-import backend.value.inst.special.MipsMove;
-import backend.value.inst.special.MipsSyscall;
+import backend.value.inst.special.*;
 import backend.value.meta.MipsAddr;
 import backend.value.meta.MipsImm;
 import backend.value.meta.MipsReg;
@@ -25,13 +21,7 @@ import llvmir.tree.value.Value;
 import llvmir.tree.value.user.constant.data.ConstantInt;
 import llvmir.tree.value.user.constant.global.Function;
 import llvmir.tree.value.user.constant.global.GlobalVariable;
-import llvmir.tree.value.user.instruction.AllocaInst;
-import llvmir.tree.value.user.instruction.CallInst;
-import llvmir.tree.value.user.instruction.GetElementPtrInst;
-import llvmir.tree.value.user.instruction.Instruction;
-import llvmir.tree.value.user.instruction.LoadInst;
-import llvmir.tree.value.user.instruction.StoreInst;
-import llvmir.tree.value.user.instruction.ZExtInst;
+import llvmir.tree.value.user.instruction.*;
 import llvmir.tree.value.user.instruction.binary.BinaryOperator;
 import llvmir.tree.value.user.instruction.binary.ICmpInst;
 import llvmir.tree.value.user.instruction.terminator.BrInst;
@@ -64,7 +54,7 @@ public abstract class MipsInstFactory {
         } else if (inst instanceof RetInst) {
             return translateRetInst((RetInst) inst, parent, mapper);
         } else {
-            throw new RuntimeException("Unknown instruction type");
+            throw new RuntimeException("Unknown instruction type: " + inst.getClass().getSimpleName());
         }
     }
 
@@ -80,8 +70,8 @@ public abstract class MipsInstFactory {
         MipsReg retReg;
         if (value instanceof ConstantInt) {
             retReg = new MipsReg(value.getPureName());
-            ret.add(new MipsAdd(// todo LoadImmediate
-                    parent, retReg, MipsReg.of(MipsRegs.ZERO), MipsImm.of(((ConstantInt) value).getValue())));
+            ret.add(new MipsLoadImm(
+                    parent, retReg, MipsImm.of(((ConstantInt) value).getValue())));
         } else if (value instanceof GetElementPtrInst || value instanceof AllocaInst ||
                 value instanceof GlobalVariable) {
             retReg = new MipsReg(value.getPureName());
@@ -266,8 +256,30 @@ public abstract class MipsInstFactory {
         } else {
             // 条件跳转
             MipsReg cond = toReg(inst.getOperand(0), parent, mapper, ret::add);
-            ret.add(new MipsBranch(parent, cond, MipsReg.of(MipsRegs.ZERO), MipsCmpType.NE,
-                    mapper.getBlock(inst.getOperand(1))));
+            if (parent.getLastInst() == cond.getDef() && cond.getDef() instanceof MipsCmp &&
+                    ((MipsCmp) cond.getDef()).isForBranch()) {
+                // 可以尝试优化指令
+                MipsCmp cmp = (MipsCmp) cond.getDef();
+                cmp.getParent().removeInst(cmp);
+                MipsReg lop = cmp.getUses().get(0);
+                MipsReg rop;
+                if (cmp.getRimm() == null) {
+                    rop = cmp.getUses().get(1);
+                    ret.add(new MipsComment(parent, "ICmp(rr) + Br 优化"));
+                } else {
+                    rop = new MipsReg("imm" + Value.allocId("IMM"));
+                    ret.add(new MipsLoadImm(parent, rop, cmp.getRimm()));
+                    ret.add(new MipsComment(parent, "ICmp(ri) + Br 优化"));
+                }
+                ret.add(new MipsBranch(parent, lop, rop, cmp.getType(),
+                        mapper.getBlock(inst.getOperand(1))));
+            } else {
+                ret.add(new MipsBranch(parent, cond, MipsReg.of(MipsRegs.ZERO), MipsCmpType.NE,
+                        mapper.getBlock(inst.getOperand(1))));
+                if (cond.getDef() instanceof MipsCmp && !(((MipsCmp) cond.getDef()).isForBranch())) {
+                    ret.add(new MipsComment(parent, "不能 ICmp(ri) + Br 优化"));
+                }
+            }
             ret.add(new MipsJump(parent, mapper.getBlock(inst.getOperand(2))));
         }
         return ret;

@@ -14,7 +14,7 @@ import llvmir.tree.value.user.instruction.binary.SubInst;
 import java.util.List;
 
 public abstract class Instruction extends User implements Derivative<BasicBlock> {
-    protected final BasicBlock parent;
+    protected BasicBlock parent;
 
     protected Instruction(Type valType, String name, BasicBlock parent, List<Value> operands) {
         super(valType, name, operands);
@@ -45,5 +45,10 @@ public abstract class Instruction extends User implements Derivative<BasicBlock>
         return parent;
     }
 
+    public void setParent(BasicBlock block) {
+        parent = block;
+    }
+
     public abstract boolean hasSideEffect();
+
 }

@@ -6,40 +6,16 @@ import frontend.token.meta.SymbolToken;
 import frontend.tree.CompUnitNode;
 import frontend.tree.LabelNode;
 import frontend.tree.MetaNode;
-import frontend.tree.exp.AddExpNode;
-import frontend.tree.exp.CondNode;
-import frontend.tree.exp.EqExpNode;
-import frontend.tree.exp.ExpNode;
-import frontend.tree.exp.LAndExpNode;
-import frontend.tree.exp.LOrExpNode;
-import frontend.tree.exp.LValNode;
-import frontend.tree.exp.MulExpNode;
-import frontend.tree.exp.PrimaryExpNode;
-import frontend.tree.exp.RelExpNode;
-import frontend.tree.exp.UnaryExpNode;
+import frontend.tree.exp.*;
 import frontend.tree.function.FuncCallNode;
 import frontend.tree.function.FuncFParamNode;
 import frontend.tree.function.FunctionNode;
-import frontend.tree.stmt.AssignNode;
-import frontend.tree.stmt.BlockNode;
-import frontend.tree.stmt.BranchNode;
-import frontend.tree.stmt.ExpStmtNode;
-import frontend.tree.stmt.InputNode;
-import frontend.tree.stmt.LoopCtrlNode;
-import frontend.tree.stmt.LoopNode;
-import frontend.tree.stmt.OutputNode;
-import frontend.tree.stmt.ReturnNode;
-import frontend.tree.stmt.StmtNode;
+import frontend.tree.stmt.*;
 import frontend.tree.var.InitValNode;
 import frontend.tree.var.VarDefNode;
 import llvmir.tree.Module;
 import llvmir.tree.SymbolTable;
-import llvmir.tree.type.ArrayType;
-import llvmir.tree.type.IntegerType;
-import llvmir.tree.type.PointerType;
-import llvmir.tree.type.Type;
-import llvmir.tree.type.Types;
-import llvmir.tree.type.VoidType;
+import llvmir.tree.type.*;
 import llvmir.tree.value.Argument;
 import llvmir.tree.value.BasicBlock;
 import llvmir.tree.value.Value;
@@ -49,31 +25,15 @@ import llvmir.tree.value.user.constant.data.ConstantInt;
 import llvmir.tree.value.user.constant.data.ConstantString;
 import llvmir.tree.value.user.constant.global.Function;
 import llvmir.tree.value.user.constant.global.GlobalVariable;
-import llvmir.tree.value.user.instruction.AllocaInst;
-import llvmir.tree.value.user.instruction.CallInst;
-import llvmir.tree.value.user.instruction.GetElementPtrInst;
-import llvmir.tree.value.user.instruction.Instruction;
-import llvmir.tree.value.user.instruction.LoadInst;
-import llvmir.tree.value.user.instruction.NormalInstruction;
-import llvmir.tree.value.user.instruction.StoreInst;
-import llvmir.tree.value.user.instruction.ZExtInst;
-import llvmir.tree.value.user.instruction.binary.AddInst;
-import llvmir.tree.value.user.instruction.binary.ICmpInst;
-import llvmir.tree.value.user.instruction.binary.MulInst;
-import llvmir.tree.value.user.instruction.binary.SDivInst;
-import llvmir.tree.value.user.instruction.binary.SRemInst;
-import llvmir.tree.value.user.instruction.binary.SubInst;
+import llvmir.tree.value.user.instruction.*;
+import llvmir.tree.value.user.instruction.binary.*;
 import llvmir.tree.value.user.instruction.terminator.BrInst;
 import llvmir.tree.value.user.instruction.terminator.RetInst;
 import llvmir.tree.value.user.instruction.terminator.TerminateInstruction;
 import util.Pair;
 import util.Tools;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-import java.util.Stack;
+import java.util.*;
 
 public abstract class IRBuilder {
 
@@ -347,6 +307,8 @@ public abstract class IRBuilder {
         if (loopBlockAfter != null) {
             loopBlockAfter.register(new BrInst(loopBlockAfter, condBlock));
         }
+
+        condBlock.registerLoop(exit, loopBlock);
         return afterLoop;
     }
 
@@ -643,7 +605,12 @@ public abstract class IRBuilder {
                     newInst = new SDivInst(Types.INT, ops.get(i).getVarName(), parent, cur, next);
                     break;
                 case "%":
-                    newInst = new SRemInst(Types.INT, ops.get(i).getVarName(), parent, cur, next);
+                    NormalInstruction tempDiv = new SDivInst(Types.INT, ops.get(i).getVarName(), parent, cur, next);
+                    NormalInstruction tempMul = new MulInst(Types.INT, ops.get(i).getVarName(), parent, tempDiv, next);
+                    newInst = new SubInst(Types.INT, ops.get(i).getVarName(), parent, cur, tempMul);
+                    //newInst = new SRemInst(Types.INT, ops.get(i).getVarName(), parent, cur, next);
+                    parent.addInst(tempDiv);
+                    parent.addInst(tempMul);
                     break;
                 default:
                     throw new RuntimeException("Unknown Op!");
